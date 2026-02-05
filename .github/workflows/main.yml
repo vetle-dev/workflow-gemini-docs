@@ -37,10 +37,10 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: '1.25'
-          cache-dependency-path: engine/go.sum
+          cache-dependency-path: engine/src/go.sum
 
       - name: Run Generator
-        working-directory: ./engine
+        working-directory: ./engine/src
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TARGET_DIR: ${{ github.workspace }}/app
