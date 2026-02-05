@@ -1,0 +1,60 @@
+name: "Gemini Doc Engine"
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: 'Gemini Model ID'
+        required: false
+        default: 'gemini-1.5-pro'
+        type: string
+    secrets:
+      GEMINI_API_KEY:
+        required: true
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      
+    steps:
+      - name: Checkout Application
+        uses: actions/checkout@v6
+        with:
+          path: app
+          fetch-depth: 0 
+
+      - name: Checkout Doc Engine
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository_owner }}/workflow-gemini-docs
+          path: engine
+          ref: main 
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache-dependency-path: engine/go.sum
+
+      - name: Run Generator
+        working-directory: ./engine
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TARGET_DIR: ${{ github.workspace }}/app
+          AI_MODEL: ${{ inputs.model }}
+        run: |
+          go run main.go --path $TARGET_DIR --model $AI_MODEL
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          path: app
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: docs/ai-update
+          commit-message: "docs: update AI generated documentation"
+          title: "docs: Update AI Documentation 🤖"
+          body: "Automated documentation update via workflow-gemini-docs."
+          delete-branch: true
