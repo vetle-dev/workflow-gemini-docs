@@ -24,6 +24,8 @@ func main() {
 	modelName := *modelPtr
 
 	//Read template files
+	fmt.Println("Scanning...")
+	fmt.Println("- Template files")
 	systemInstruction, err := os.ReadFile("docs/templates/system_instruction.md")
 	if err != nil {
 		log.Fatal(err)
@@ -35,12 +37,14 @@ func main() {
 	}
 
 	// Read source code
+	fmt.Println("- Source code")
 	codeContext, err := scanFiles(targetDirectory)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Read Architectural Decision Records (ADRs)
+	fmt.Println("- Architectural Decision Records (ADRs)")
 	adrPath := filepath.Join(targetDirectory, "docs", "adr")
 	adrContext := collectDesignDecisions(adrPath)
 
@@ -68,19 +72,21 @@ func main() {
 
 	fullPrompt := sb.String()
 
-	fmt.Println(fullPrompt)
+	// fmt.Println(fullPrompt)
 
 	// ---------------------------------------------------------
 	// 6. Send to AI
 	// ---------------------------------------------------------
 	// Initialize Gemini client
 	// The client gets the API key from the environment variable `GEMINI_API_KEY`.
+	fmt.Println("Initializing Gemini client")
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	fmt.Printf("Generating content with: %s\n", modelName)
 	response, err := client.Models.GenerateContent(
 		ctx,
 		modelName,
@@ -95,6 +101,7 @@ func main() {
 	// ---------------------------------------------------------
 	// 7. Save the result
 	// ---------------------------------------------------------
+	fmt.Println("Saving content response")
 	outputDir := filepath.Join(targetDirectory, "docs")
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		log.Fatal(err)
@@ -102,6 +109,7 @@ func main() {
 
 	outputFile := filepath.Join(outputDir, "AI_GENERATED.md")
 
+	fmt.Println("Creating file")
 	err = os.WriteFile(outputFile, []byte(response.Text()), 0644)
 	if err != nil {
 		log.Fatal(err)
