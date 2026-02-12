@@ -1,42 +1,34 @@
 package main
 
 import (
-	//"context"
+	"context"
 	"flag"
-	//"fmt"
-	"os"
-	"strings"
-
-	// "google.golang.org/api/option"
+	"fmt"
+	//"google.golang.org/api/option"
+	"google.golang.org/genai"
 	"log"
+	"os"
 	"path/filepath"
-	//"google.golang.org/genai"
+	"strings"
 )
 
 func main() {
 
 	// Initialize flags and flag values
-	pathPtr := flag.String("path", "./src", "Path to your application code.")
-	// modelPtr := flag.String("model", "gemini-3-flash-preview", "Choose a Google Gemini AI model.")
+	pathPtr := flag.String("path", "./", "Path to your application code.")
+	modelPtr := flag.String("model", "gemini-3-flash-preview", "Choose a Google Gemini AI model.")
 	flag.Parse()
 
 	targetDirectory := *pathPtr
+	modelName := *modelPtr
 
-	// // Initialize Gemini client
-	// ctx := context.Background()
-	// // The client gets the API key from the environment variable `GEMINI_API_KEY`.
-	// client, err := genai.NewClient(ctx, nil)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// Read template files
-	systemInstruction, err := os.ReadFile("templates/system_instruction.d")
+	//Read template files
+	systemInstruction, err := os.ReadFile("docs/templates/system_instruction.md")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	outputTemplate, err := os.ReadFile("templates/output_template.md")
+	outputTemplate, err := os.ReadFile("docs/templates/output_template.md")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -52,55 +44,69 @@ func main() {
 	adrContext := collectDesignDecisions(adrPath)
 
 	// ---------------------------------------------------------
-	// 5. BYGG PROMPTEN (OPPDATERT SANDWICH)
+	// Build the prompt
 	// ---------------------------------------------------------
-	// var sb strings.Builder
+	var sb strings.Builder
 
-	// A. System Instruction (Rollen)
-	// sb.Write(systemInstruction)
-	// sb.WriteString("\n---\n")
+	// A. System Instruction (The role)
+	sb.Write(systemInstruction)
+	sb.WriteString("\n---\n")
 
-	// B. Template (Formatet)
-	// sb.WriteString("Please use this template:\n")
-	// sb.Write(outputTemplate)
-	// sb.WriteString("\n---\n")
+	// B. Template (The format)
+	sb.Write(outputTemplate)
+	sb.WriteString("\n---\n")
 
-	// C. Design Decisions (Kontekst) - NYTT!
-	// Her primer vi AI-en med hvorfor ting er som de er.
-	// sb.WriteString("Here are the Architecture Decision Records (ADR):\n")
-	// sb.WriteString(adrContext)
-	// sb.WriteString("\n---\n")
+	// C. Design Decisions (The context)
+	sb.WriteString("Here are the Architecture Decision Records (ADR):\n")
+	sb.WriteString(adrContext)
+	sb.WriteString("\n---\n")
 
 	// D. Koden (Fakta)
-	// sb.WriteString("Here is the source code:\n")
-	// sb.WriteString(codeContext)
+	sb.WriteString("Here is the source code:\n")
+	sb.WriteString(codeContext)
 
-	// fullPrompt := sb.String()
+	fullPrompt := sb.String()
 
-	// ---------------------------------------------------------
-	// 6. SEND TIL AI (API KALL)
-	// ---------------------------------------------------------
-	// model := client.GenerativeModel(modelName)
-	// resp, err := model.GenerateContent(ctx, genai.Text(fullPrompt))
-	// Hent tekst fra responsen.
-
-	// result, err := client.Models.GenerateContent(
-	// 	ctx,
-	// 	"gemini-3-flash-preview",
-	// 	genai.Text("Explain why cats are cool in one sentence."),
-	// 	nil,
-	// )
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// fmt.Println(result.Text())
+	// fmt.Println(fullPrompt)
 
 	// ---------------------------------------------------------
-	// 7. LAGRE RESULTATET
+	// 6. Send to AI
 	// ---------------------------------------------------------
-	// os.MkdirAll(filepath.Join(targetDirectory, "docs"), ...)
-	// os.WriteFile(..., data, 0644)
-	// Print "Done".
+	// Initialize Gemini client
+	// The client gets the API key from the environment variable `GEMINI_API_KEY`.
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	response, err := client.Models.GenerateContent(
+		ctx,
+		modelName,
+		genai.Text(fullPrompt),
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// fmt.Println(response.Text())
+	// ---------------------------------------------------------
+	// 7. Save the result
+	// ---------------------------------------------------------
+	outputDir := filepath.Join(targetDirectory, "docs")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		log.Fatal(err)
+	}
+
+	outputFile := filepath.Join(outputDir, "AI_GENERATED.md")
+
+	err = os.WriteFile(outputFile, []byte(response.Text()), 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Success! Documentation saved to: %s\n", outputFile)
 }
 
 // Helper function: Recursive file scanner
@@ -109,7 +115,7 @@ func scanFiles(rootPath string) (string, error) {
 
 	// Blacklist directories
 	ignoreMap := map[string]bool{
-		".git": true, "node_modules": true,
+		".git": true, "node_modules": true, "docs": true,
 	}
 
 	// Whitelist file extensions
@@ -161,34 +167,38 @@ func scanFiles(rootPath string) (string, error) {
 	return sb.String(), err
 }
 
-// ---------------------------------------------------------
-// HJELPEFUNKSJON 2: LES DESIGNBESLUTNINGER (Flat liste)
-// ---------------------------------------------------------
 // Helper function: File scanning a specific directory
-// func collectDesignDecisions(adrPath string) string {
-// 	// 1. SJEKK OM MAPPEN FINNES
-// 	// GO-LÆRDOM: Bruk os.Stat() for å sjekke eksistens.
-// 	// if _, err := os.Stat(adrPath); os.IsNotExist(err) {
-// 	//     return "No ADRs found." // Helt ok, vi bare returnerer tomt.
-// 	// }
+func collectDesignDecisions(adrPath string) string {
+	// Check if folder exists
+	if _, err := os.Stat(adrPath); os.IsNotExist(err) {
+		return "No ADRs found." // Helt ok, vi bare returnerer tomt.
+	}
 
-// 	// 2. LES MAPPEN (IKKE REKURSIVT)
-// 	// GO-LÆRDOM: Bruk os.ReadDir() når du bare vil ha filene i én mappe.
-// 	// entries, err := os.ReadDir(adrPath)
+	// Read the folder
+	entries, err := os.ReadDir(adrPath)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-// 	// strings.Builder...
+	var sb strings.Builder
 
-// 	// 3. LOOP GJENNOM FILENE
-// 	// for _, entry := range entries {
-// 	//     if entry.IsDir() { continue } // Hopp over undermapper
-// 	//     if !strings.HasSuffix(entry.Name(), ".md") { continue } // Kun markdown
+	// Loop through the files
+	for _, entry := range entries {
+		if entry.IsDir() { // Skip subdirectories
+			continue
+		}
+		if !strings.HasSuffix(entry.Name(), ".md") { // Keep only markdown
+			continue
+		}
 
-// 	//     fullPath := filepath.Join(adrPath, entry.Name())
-// 	//     content, _ := os.ReadFile(fullPath)
+		fullPath := filepath.Join(adrPath, entry.Name())
+		content, _ := os.ReadFile(fullPath)
 
-// 	//     sb.WriteString("\n--- DECISION RECORD: " + entry.Name() + " ---\n")
-// 	//     sb.Write(content)
-// 	// }
+		// Build string
+		sb.WriteString("\n--- DECISION RECORD: " + entry.Name() + " ---\n")
+		sb.Write(content)
+		sb.WriteString("\n")
+	}
 
-// 	// return sb.String()
-// }
+	return sb.String()
+}

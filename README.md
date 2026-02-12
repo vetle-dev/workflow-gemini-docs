@@ -1,6 +1,7 @@
 # Gemini Docs
 
 ## Usage
+### GitHub Actions
 ```yaml
 name: Update Documentation
 
@@ -19,4 +20,13 @@ jobs:
       model: 'gemini-1.5-pro'
     secrets:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+```
+
+### Binary
+```bash
+go run src/main.go -h
+  -model string
+        Choose a Google Gemini AI model. (default "gemini-3-flash-preview")
+  -path string
+        Path to your application code. (default "./")
 ```
