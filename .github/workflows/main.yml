@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout Source Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run Gemini Docs
         uses: vetle-dev/gemini-docs-cli@main
