@@ -1,53 +1,49 @@
-# Gemini Docs CLI
+# Gemini Docs
 
 ## 🏗️ Architecture (C4 Model)
 
-The Gemini Docs CLI is a local orchestration tool that aggregates source code, design records, and templates to generate documentation via Google's Gemini AI.
-
 ```mermaid
 graph TB
-    User([Developer])
+    User([Developer / CI Runner])
     
-    subgraph Local_Environment [Local Machine]
+    subgraph Local_Environment [Runtime Environment]
         App[Gemini Docs CLI]
         Fs[(Local Filesystem)]
-        Templates[Templates & ADRs]
     end
 
-    subgraph External_Cloud [Google Cloud]
+    subgraph External_Services [Google Cloud]
         Gemini[Gemini AI API]
     end
 
-    User -- Runs --> App
-    App -- Scans --> Fs
-    App -- Reads --> Templates
-    App -- Sends Context --> Gemini
-    Gemini -- Returns Markdown --> App
-    App -- Writes AI_GENERATED.md --> Fs
+    User -->|Executes| App
+    App -->|Read Code/ADRs| Fs
+    App -->|Write AI_GENERATED.md| Fs
+    App -->|Send Context & Prompts| Gemini
+    Gemini -->|Return Documentation| App
 ```
 
 ## 🔌 Integrations & Data Flow
 
 | Direction | System/Service | Protocol | Purpose | Auth Method |
 |--|--|--|--|--|
-| **Downstream** | Google Gemini API | HTTPS/gRPC | LLM Content Generation | API Key (Env) |
-| **Internal** | Local Filesystem | File I/O | Reads source code and templates | OS Permissions |
-| **Internal** | gitignore | Logic | Filters files based on .gitignore | N/A |
+| **Downstream** | Google Gemini API | HTTPS | LLM content generation | API Key |
+| **Internal** | Filesystem | OS I/O | Reads source code & ADRs | N/A |
+| **Internal** | Filesystem | OS I/O | Writes Markdown docs | N/A |
 
 ## ⚙️ Key Configuration & Behavior
 
 | Environment Variable / Flag | Description | Criticality |
 |--|--|--|
-| `GEMINI_API_KEY` | API key for Google AI SDK authentication | High |
-| `-model` | Specific Gemini model (e.g., gemini-3-flash-preview) | Medium |
-| `-path` | Target directory for scanning and output | High |
-| `docs/templates/` | System instructions and formatting templates | High |
+| `GEMINI_API_KEY` | Key for Google GenAI authentication | High |
+| `-path` / `target_dir` | Target directory for code scanning | Medium |
+| `-model` / `model` | Specific Gemini model version to invoke | Low |
 
 ## 🔒 Security Posture
-- **Authentication**: Uses `GEMINI_API_KEY` environment variable. The client initialization suggests standard SDK credential discovery.
-- **Authorization**: N/A (Local execution).
-- **Data Privacy**: **High Risk.** The application sends the entire source code and Architecture Decision Records (ADRs) to Google’s servers. Avoid use with sensitive/proprietary code unless data processing agreements are in place.
+- **Authentication**: Uses `GEMINI_API_KEY` environment variable for Google GenAI client initialization.
+- **Authorization**: N/A (Local CLI tool).
+- **Data Privacy**: **High Risk.** The tool sends raw source code and design records to an external LLM (Google Gemini). Ensure no secrets or sensitive PII are committed to the scanned files.
+- **Scanning**: Automatically respects `.gitignore` and hardcoded exclusions (`.git`, `node_modules`, `vendor`) to prevent accidental leakage of dependency code or metadata.
 
-## 💰 FinOps Notes
-- **Token Costs**: Gemini models charge per 1k tokens. Scanning large codebases or passing massive context (vendor/node_modules) can lead to significant API costs. 
-- **Efficiency**: The tool implements a `.gitignore` parser and directory exclusion (e.g., `vendor`, `.git`) to minimize unnecessary token consumption.
+## 💰 FinOps Observations
+- **Token Costs**: Gemini API pricing is usage-based (per token). Large repositories with extensive source code will increase prompt size and operational costs.
+- **Model Selection**: The default `gemini-3-flash-preview` is typically more cost-effective than "Pro" variants but should be monitored for performance/cost balance.
