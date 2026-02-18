@@ -1,53 +1,52 @@
-# Gemini Docs CLI
+# Gemini Docs
 
 ## 🏗️ Architecture (C4 Model)
-
-The Gemini Docs CLI is a local orchestration tool that aggregates source code, design records, and templates to generate documentation via Google's Gemini AI.
+A CLI tool that orchestrates source code analysis by aggregating local context and interfacing with the Google Gemini API to generate documentation.
 
 ```mermaid
 graph TB
-    User([Developer])
+    User([Developer / CI Runner])
     
-    subgraph Local_Environment [Local Machine]
+    subgraph Local_Environment [Local / CI Environment]
         App[Gemini Docs CLI]
-        Fs[(Local Filesystem)]
-        Templates[Templates & ADRs]
+        FS[(Local Filesystem)]
+        Templates[Markdown Templates]
     end
 
-    subgraph External_Cloud [Google Cloud]
-        Gemini[Gemini AI API]
+    subgraph External_Systems [Google Cloud]
+        Gemini[Gemini API]
     end
 
-    User -- Runs --> App
-    App -- Scans --> Fs
-    App -- Reads --> Templates
-    App -- Sends Context --> Gemini
-    Gemini -- Returns Markdown --> App
-    App -- Writes AI_GENERATED.md --> Fs
+    User -->|Executes| App
+    App -->|Reads Code/ADRs| FS
+    App -->|Reads| Templates
+    App -->|Sends Context| Gemini
+    Gemini -->|Returns Markdown| App
+    App -->|Writes AI_GENERATED.md| FS
 ```
 
 ## 🔌 Integrations & Data Flow
 
 | Direction | System/Service | Protocol | Purpose | Auth Method |
 |--|--|--|--|--|
-| **Downstream** | Google Gemini API | HTTPS/gRPC | LLM Content Generation | API Key (Env) |
-| **Internal** | Local Filesystem | File I/O | Reads source code and templates | OS Permissions |
-| **Internal** | gitignore | Logic | Filters files based on .gitignore | N/A |
+| **Downstream** | Google Gemini API | HTTPS/gRPC | LLM Content Generation | API Key (Env Var) |
+| **Internal** | Local Filesystem | File I/O | Read source/ADR, Write docs | N/A |
+| **Internal** | .gitignore | N/A | Filtering files for scanning | N/A |
 
 ## ⚙️ Key Configuration & Behavior
 
 | Environment Variable / Flag | Description | Criticality |
 |--|--|--|
-| `GEMINI_API_KEY` | API key for Google AI SDK authentication | High |
-| `-model` | Specific Gemini model (e.g., gemini-3-flash-preview) | Medium |
-| `-path` | Target directory for scanning and output | High |
-| `docs/templates/` | System instructions and formatting templates | High |
+| `GEMINI_API_KEY` | API Key for Google GenAI authentication. | Critical |
+| `-path` | Target directory for source code scanning. | High |
+| `-model` | Specific Gemini model (e.g., `gemini-1.5-flash`). | Medium |
+
+## 💰 FinOps Insights
+*   **Token Consumption**: The tool sends raw source code and ADRs to the LLM. Large repositories will result in high token usage and potential costs.
+*   **Model Selection**: Using `flash` models is recommended to keep costs low compared to `pro` models.
 
 ## 🔒 Security Posture
-- **Authentication**: Uses `GEMINI_API_KEY` environment variable. The client initialization suggests standard SDK credential discovery.
-- **Authorization**: N/A (Local execution).
-- **Data Privacy**: **High Risk.** The application sends the entire source code and Architecture Decision Records (ADRs) to Google’s servers. Avoid use with sensitive/proprietary code unless data processing agreements are in place.
-
-## 💰 FinOps Notes
-- **Token Costs**: Gemini models charge per 1k tokens. Scanning large codebases or passing massive context (vendor/node_modules) can lead to significant API costs. 
-- **Efficiency**: The tool implements a `.gitignore` parser and directory exclusion (e.g., `vendor`, `.git`) to minimize unnecessary token consumption.
+*   **Authentication**: Uses a static API key via environment variables.
+*   **Data Privacy**: **High Risk**. The tool transmits raw source code and architectural decisions to a third-party (Google). Ensure no secrets are present in the source code before execution.
+*   **Hardcoded Exclusions**: Automatically ignores sensitive directories like `.git`, `node_modules`, and `vendor` to prevent accidental data leakage or processing overhead.
+*   **Encryption**: Relies on the standard Google GenAI SDK for transport-level encryption (TLS) during API calls.

@@ -13,44 +13,56 @@ import (
 	"strings"
 )
 
-func main() {
+var pathFlag string
+var modelFlag string
 
-	// Initialize flags and flag values
-	pathPtr := flag.String("path", "./", "Path to your application code.")
-	modelPtr := flag.String("model", "gemini-3-flash-preview", "Choose a Google Gemini AI model.")
+func init() {
+	flag.StringVar(&pathFlag, "path", "./", "Path to your application code.")
+	flag.StringVar(&modelFlag, "model", "gemini-3-flash-preview", "Choose a Google Gemini AI model.")
 	flag.Parse()
+}
 
-	targetDirectory := *pathPtr
-	modelName := *modelPtr
-
-	//Read template files
+func main() {
 	fmt.Println("Scanning...")
-	fmt.Println("- Template files")
+	fmt.Println(" - System instructions")
 	systemInstruction, err := os.ReadFile("docs/templates/system_instruction.md")
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	fmt.Println(" - Output template")
 	outputTemplate, err := os.ReadFile("docs/templates/output_template.md")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Read source code
-	fmt.Println("- Source code")
-	codeContext, err := scanFiles(targetDirectory)
+	fmt.Println(" - Source code")
+	codeContext, err := scanFiles(pathFlag)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Read Architectural Decision Records (ADRs)
-	fmt.Println("- Architectural Decision Records (ADRs)")
-	adrPath := filepath.Join(targetDirectory, "docs", "adr")
+	fmt.Println(" - Architectural Decision Records (ADRs)")
+	adrPath := filepath.Join(pathFlag, "docs", "adr")
 	adrContext := collectDesignDecisions(adrPath)
 
-	// ---------------------------------------------------------
-	// Build the prompt
-	// ---------------------------------------------------------
+	prompt := buildPrompt(systemInstruction, outputTemplate, adrContext, codeContext)
+
+	fmt.Printf("Initializing genai client and generating content with: %s\n", modelFlag)
+	response := initGenai(prompt)
+
+	// Save the result
+	fmt.Println("Saving genai response...")
+	outputFile, err := saveFile(pathFlag, response)
+	if err != nil {
+		log.Fatal(err)
+	} else {
+		fmt.Printf(" - Success! Documentation saved to: %s\n", outputFile)
+	}
+}
+
+// Builds a prompt with strings.Builder that returns a prompt to be used with genai.
+func buildPrompt(systemInstruction []byte, outputTemplate []byte, adrContext string, codeContext string) (prompt string) {
 	var sb strings.Builder
 
 	// A. System Instruction (The role)
@@ -66,60 +78,49 @@ func main() {
 	sb.WriteString(adrContext)
 	sb.WriteString("\n---\n")
 
-	// D. Koden (Fakta)
+	// D. Source Code
 	sb.WriteString("Here is the source code:\n")
 	sb.WriteString(codeContext)
 
-	fullPrompt := sb.String()
+	return sb.String()
+}
 
-	// fmt.Println(fullPrompt)
-
-	// ---------------------------------------------------------
-	// 6. Send to AI
-	// ---------------------------------------------------------
-	// Initialize Gemini client
-	// The client gets the API key from the environment variable `GEMINI_API_KEY`.
-	fmt.Println("Initializing Gemini client")
-	ctx := context.Background()
-	client, err := genai.NewClient(ctx, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("Generating content with: %s\n", modelName)
-	response, err := client.Models.GenerateContent(
-		ctx,
-		modelName,
-		genai.Text(fullPrompt),
-		nil,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// fmt.Println(response.Text())
-	// ---------------------------------------------------------
-	// 7. Save the result
-	// ---------------------------------------------------------
-	fmt.Println("Saving content response")
-	outputDir := filepath.Join(targetDirectory, "docs")
+func saveFile(pathFlag string, response string) (string, error) {
+	outputDir := filepath.Join(pathFlag, "docs")
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		log.Fatal(err)
 	}
 
 	outputFile := filepath.Join(outputDir, "AI_GENERATED.md")
 
-	fmt.Println("Creating file")
-	err = os.WriteFile(outputFile, []byte(response.Text()), 0644)
+	err := os.WriteFile(outputFile, []byte(response), 0644)
+
+	return outputFile, err
+}
+
+// Initialize the genai client, and sends a prompt.
+// The client gets the API key from the environment variable `GEMINI_API_KEY`.
+func initGenai(prompt string) (genaiResponse string) {
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("Success! Documentation saved to: %s\n", outputFile)
+	response, err := client.Models.GenerateContent(
+		ctx,
+		modelFlag,
+		genai.Text(prompt),
+		nil,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return response.Text()
 }
 
-// Helper function: Recursive file scanner with .gitignore support
-// scanFiles recursively walks the directory tree, respecting .gitignore and whitelists.
+// Recursive file scanner with .gitignore support, it recursively walks the directory tree, respecting .gitignore and whitelists.
 func scanFiles(rootPath string) (string, error) {
 	var sb strings.Builder
 
@@ -186,7 +187,7 @@ func scanFiles(rootPath string) (string, error) {
 	return sb.String(), err
 }
 
-// Helper function: File scanning a specific directory
+// Scans the
 func collectDesignDecisions(adrPath string) string {
 	// Check if folder exists
 	if _, err := os.Stat(adrPath); os.IsNotExist(err) {
